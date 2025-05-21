@@ -87,7 +87,9 @@ def create_user(user: UserSchema):
     return user_with_id
 
 
-@app.put('/users/{user_id}', response_model=UserPublic)
+@app.put(
+    '/users/{user_id}', status_code=HTTPStatus.OK, response_model=UserPublic
+)
 def update_user(user_id: int, user: UserSchema):
     """
     Atualiza os dados de um usuário existente no banco de dados simulado.
@@ -103,6 +105,11 @@ def update_user(user_id: int, user: UserSchema):
     Returns:
         UserPublic: Um objeto que representa o usuário atualizado,
         sem expor a senha.
+
+    Raises:
+        HTTPException: Se o usuário com o ID fornecido não for encontrado,
+        uma exceção HTTP 404 (Not Found) é levantada.
+        O status code 404 é retornado com a mensagem 'User not found'.
     """
     if user_id > len(database) or user_id < 1:
         raise HTTPException(
@@ -114,7 +121,9 @@ def update_user(user_id: int, user: UserSchema):
     return user_with_id
 
 
-@app.delete('/users/{user_id}', response_model=Message)
+@app.delete(
+    '/users/{user_id}', status_code=HTTPStatus.OK, response_model=UserPublic
+)
 def delete_user(user_id: int):
     """
     Deleta um usuário do banco de dados simulado.
@@ -124,16 +133,19 @@ def delete_user(user_id: int):
         user_id (int): O ID do usuário a ser deletado.
 
     Returns:
-        Message: Um dicionário contendo uma mensagem de sucesso.
+        UserPublic: Um objeto que representa o usuário deletado.
+
+    Raises:
+        HTTPException: Se o usuário com o ID fornecido não for encontrado,
+        uma exceção HTTP 404 (Not Found) é levantada.
+        O status code 404 é retornado com a mensagem 'User not found'.
     """
     if user_id > len(database) or user_id < 1:
         raise HTTPException(
             status_code=HTTPStatus.NOT_FOUND, detail='User not found'
         )
 
-    del database[user_id - 1]
-
-    return {'message': 'User deleted'}
+    return database.pop(user_id - 1)
 
 
 @app.get('/users/{user_id}', response_model=UserPublic)
@@ -148,6 +160,11 @@ def get_user(user_id: int):
     Returns:
         UserPublic: Um objeto que representa o usuário solicitado,
         sem expor a senha.
+
+    Raises:
+        HTTPException: Se o usuário com o ID fornecido não for encontrado,
+        uma exceção HTTP 404 (Not Found) é levantada.
+        O status code 404 é retornado com a mensagem 'User not found'.
     """
     if user_id > len(database) or user_id < 1:
         raise HTTPException(
