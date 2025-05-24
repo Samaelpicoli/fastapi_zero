@@ -5,23 +5,48 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 from fastapi_zero.app import app
-from fastapi_zero.models import table_registry
+from fastapi_zero.database import get_session
+from fastapi_zero.models import User, table_registry
 
 
 @pytest.fixture
-def client():
+def client(session):
     """
     Cria um cliente de teste para a aplicação FastAPI.
-    Uma fixture é uma função que fornece dados ou objetos para os testes.
-    Neste caso, a fixture 'client' cria um cliente de teste que pode ser
-    usado em diferentes testes para fazer requisições à aplicação.
+    Esta função cria um cliente de teste que pode ser usado para
+    fazer requisições à aplicação durante os testes. A função
+    substitui a dependência de sessão do banco de dados pela
+    sessão de teste fornecida. Após os testes, a dependência
+    é restaurada.
 
-    Returns:
+    Args:
+        session (Session): A sessão de banco de dados para os testes.
+
+    Yields:
         TestClient: Um cliente de teste configurado para a aplicação.
     """
-    return TestClient(app)
+
+    def get_session_override():
+        """
+        Substitui a dependência de sessão do banco de dados pela
+        sessão de teste fornecida.
+        Esta função é usada para garantir que a sessão de teste
+        seja usada durante os testes, em vez da sessão padrão
+        definida na aplicação.
+
+        Returns:
+            Session: A sessão de banco de dados para os testes.
+        """
+        return session
+
+    with TestClient(app) as test_client:
+        app.dependency_overrides[get_session] = get_session_override
+        yield test_client
+
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -37,13 +62,41 @@ def session():
     Yields:
         Session: Uma sessão de banco de dados configurada para os testes.
     """
-    engine = create_engine('sqlite:///:memory:')
+    engine = create_engine(
+        'sqlite:///:memory:',
+        connect_args={'check_same_thread': False},
+        poolclass=StaticPool,
+    )
     table_registry.metadata.create_all(engine)
 
     with Session(engine) as session:
         yield session
 
     table_registry.metadata.drop_all(engine)
+
+
+@pytest.fixture
+def user(session: Session):
+    """
+    Cria um usuário de teste no banco de dados.
+    Esta função cria um usuário com nome de usuário, email e senha
+    fornecidos. O usuário é adicionado à sessão do banco de dados
+    e a sessão é confirmada. Após a confirmação, o usuário é
+    recuperado e retornado.
+
+    Args:
+        session (Session): A sessão de banco de dados para os testes.
+
+    Returns:
+        User: O usuário criado no banco de dados.
+    """
+    user = User(
+        username='testuser', email='test@test.com', password='testpassword'
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
 
 
 @contextmanager

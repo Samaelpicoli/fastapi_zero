@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 class Message(BaseModel):
@@ -36,22 +36,16 @@ class UserPublic(BaseModel):
         id (int): O ID do usuário
         username (str): O nome de usuário
         email (str): O endereço de e-mail do usuário
+        model_config (ConfigDict): Configuração do modelo
+        Esta configuração permite que o modelo seja criado a partir de
+        atributos, o que é útil para criar instâncias do modelo a partir
+        de dicionários ou outros objetos que possuem os mesmos atributos.
     """
 
     id: int
     username: str
     email: EmailStr
-
-
-class UserDB(UserSchema):
-    """
-    Modelo para representar um usuário armazenado no banco de dados.
-
-    Attributes:
-        id (int): O ID do usuário
-    """
-
-    id: int
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserList(BaseModel):

@@ -1,19 +1,21 @@
 from http import HTTPStatus
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
+from fastapi_zero.database import get_session
+from fastapi_zero.models import User
 from fastapi_zero.schemas import (
     Message,
-    UserDB,
     UserList,
     UserPublic,
     UserSchema,
 )
 
 app = FastAPI(title='FastAPI Zero')
-
-database = []
 
 
 @app.get('/', status_code=HTTPStatus.OK, response_model=Message)
@@ -51,124 +53,168 @@ def hello_world():
 
 
 @app.get('/users/', status_code=HTTPStatus.OK, response_model=UserList)
-def read_users():
+def read_users(
+    skip: int = 0, limit: int = 100, session: Session = Depends(get_session)
+):
     """
-    Retorna uma lista de usuários cadastrados.
+    Retorna uma lista de usuários.
     Esta função manipula requisições GET para a rota '/users/'.
+    Retorna uma lista de usuários com base nos parâmetros de
+    paginação 'skip' e 'limit'.
+
+    Args:
+        skip (int): O número de usuários a serem pulados.
+        limit (int): O número máximo de usuários a serem retornados.
+        session (Session): A sessão do banco de dados.
 
     Returns:
-        UserList: Um dicionário contendo uma lista de usuários
-        cadastrados no banco de dados simulado.
+        UserList: Uma lista de usuários com nome e email.
     """
-    return {'users': database}
+    users = session.scalars(select(User).offset(skip).limit(limit)).all()
+    return {'users': users}
 
 
 @app.post('/users/', status_code=HTTPStatus.CREATED, response_model=UserPublic)
-def create_user(user: UserSchema):
+def create_user(user: UserSchema, session: Session = Depends(get_session)):
     """
-    Cria um novo usuário e o adiciona ao banco de dados simulado.
+    Cria um novo usuário.
     Esta função manipula requisições POST para a rota '/users/'.
-    O usuário é criado a partir dos dados fornecidos no corpo da requisição.
-    O ID do usuário é gerado automaticamente.
-    O usuário criado é retornado na resposta.
+    Retorna os dados do usuário criado.
 
     Args:
-        user (UserSchema): Um objeto que contém os
-        dados do usuário a ser criado.
+        user (UserSchema): Os dados do usuário a serem criados.
+        session (Session): A sessão do banco de dados.
 
     Returns:
-        UserPublic: Um objeto que representa o usuário criado,
-        sem expor a senha.
+        UserPublic: Os dados do usuário criado.
+
+    Raises:
+        HTTPException: Se o nome de usuário ou e-mail já existirem.
     """
-    user_with_id = UserDB(**user.model_dump(), id=len(database) + 1)
+    db_user = session.scalar(
+        select(User).where(
+            (User.username == user.username) | (User.email == user.email)
+        )
+    )
 
-    database.append(user_with_id)
+    if db_user:
+        if db_user.username == user.username:
+            raise HTTPException(
+                status_code=HTTPStatus.CONFLICT,
+                detail='Username already exists',
+            )
+        if db_user.email == user.email:
+            raise HTTPException(
+                status_code=HTTPStatus.CONFLICT,
+                detail='Email already exists',
+            )
 
-    return user_with_id
+    db_user = User(
+        username=user.username, password=user.password, email=user.email
+    )
+    session.add(db_user)
+    session.commit()
+    session.refresh(db_user)
+
+    return db_user
 
 
 @app.put(
     '/users/{user_id}', status_code=HTTPStatus.OK, response_model=UserPublic
 )
-def update_user(user_id: int, user: UserSchema):
+def update_user(
+    user_id: int, user: UserSchema, session: Session = Depends(get_session)
+):
     """
-    Atualiza os dados de um usuário existente no banco de dados simulado.
+    Atualiza os dados de um usuário específico.
     Esta função manipula requisições PUT para a rota '/users/{user_id}'.
-    O usuário é atualizado a partir dos dados fornecidos no
-    corpo da requisição. O ID do usuário é mantido.
+    Retorna os dados do usuário atualizado.
 
     Args:
         user_id (int): O ID do usuário a ser atualizado.
-        user (UserSchema): Um objeto que contém os dados do usuário a ser
-        atualizado.
+        user (UserSchema): Os dados do usuário a serem atualizados.
+        session (Session): A sessão do banco de dados.
 
     Returns:
-        UserPublic: Um objeto que representa o usuário atualizado,
-        sem expor a senha.
+        UserPublic: Os dados do usuário atualizado.
 
     Raises:
-        HTTPException: Se o usuário com o ID fornecido não for encontrado,
-        uma exceção HTTP 404 (Not Found) é levantada.
-        O status code 404 é retornado com a mensagem 'User not found'.
+        HTTPException: Se o usuário não for encontrado ou se o
+        nome de usuário ou e-mail já existirem.
     """
-    if user_id > len(database) or user_id < 1:
+    user_db = session.scalar(select(User).where(User.id == user_id))
+    if not user_db:
         raise HTTPException(
             status_code=HTTPStatus.NOT_FOUND, detail='User not found'
         )
 
-    user_with_id = UserDB(**user.model_dump(), id=user_id)
-    database[user_id - 1] = user_with_id
-    return user_with_id
+    try:
+        user_db.email = user.email
+        user_db.username = user.username
+        user_db.password = user.password
+
+        session.add(user_db)
+        session.commit()
+        session.refresh(user_db)
+
+        return user_db
+
+    except IntegrityError:
+        raise HTTPException(
+            status_code=HTTPStatus.CONFLICT,
+            detail='Username or email already exists',
+        )
 
 
 @app.delete(
-    '/users/{user_id}', status_code=HTTPStatus.OK, response_model=UserPublic
+    '/users/{user_id}', status_code=HTTPStatus.OK, response_model=Message
 )
-def delete_user(user_id: int):
+def delete_user(user_id: int, session: Session = Depends(get_session)):
     """
-    Deleta um usuário do banco de dados simulado.
+    Deleta um usuário específico.
     Esta função manipula requisições DELETE para a rota '/users/{user_id}'.
+    Retorna uma mensagem de sucesso após a exclusão do usuário.
 
     Args:
         user_id (int): O ID do usuário a ser deletado.
+        session (Session): A sessão do banco de dados.
 
     Returns:
-        UserPublic: Um objeto que representa o usuário deletado.
+        dict: Um dicionário contendo a mensagem de sucesso.
 
     Raises:
-        HTTPException: Se o usuário com o ID fornecido não for encontrado,
-        uma exceção HTTP 404 (Not Found) é levantada.
-        O status code 404 é retornado com a mensagem 'User not found'.
+        HTTPException: Se o usuário não for encontrado.
     """
-    if user_id > len(database) or user_id < 1:
+    user_db = session.scalar(select(User).where(User.id == user_id))
+    if not user_db:
         raise HTTPException(
             status_code=HTTPStatus.NOT_FOUND, detail='User not found'
         )
 
-    return database.pop(user_id - 1)
+    session.delete(user_db)
+    session.commit()
+
+    return {'message': 'User deleted'}
 
 
 @app.get('/users/{user_id}', response_model=UserPublic)
-def get_user(user_id: int):
+def get_user(user_id: int, session: Session = Depends(get_session)):
     """
     Retorna os dados de um usuário específico.
     Esta função manipula requisições GET para a rota '/users/{user_id}'.
+    Retorna os dados do usuário correspondente ao ID fornecido.
 
     Args:
         user_id (int): O ID do usuário a ser retornado.
+        session (Session): A sessão do banco de dados.
 
     Returns:
-        UserPublic: Um objeto que representa o usuário solicitado,
-        sem expor a senha.
-
-    Raises:
-        HTTPException: Se o usuário com o ID fornecido não for encontrado,
-        uma exceção HTTP 404 (Not Found) é levantada.
-        O status code 404 é retornado com a mensagem 'User not found'.
+        UserPublic: Os dados do usuário.
     """
-    if user_id > len(database) or user_id < 1:
+    user_db = session.scalar(select(User).where(User.id == user_id))
+    if not user_db:
         raise HTTPException(
             status_code=HTTPStatus.NOT_FOUND, detail='User not found'
         )
 
-    return database[user_id - 1]
+    return user_db
