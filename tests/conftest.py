@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 from fastapi_zero.app import app
 from fastapi_zero.database import get_session
 from fastapi_zero.models import User, table_registry
+from fastapi_zero.security import get_password_hash
 
 
 @pytest.fixture
@@ -90,12 +91,18 @@ def user(session: Session):
     Returns:
         User: O usuário criado no banco de dados.
     """
+    password = 'testpassword'
     user = User(
-        username='testuser', email='test@test.com', password='testpassword'
+        username='testuser',
+        email='test@test.com',
+        password=get_password_hash(password),
     )
     session.add(user)
     session.commit()
     session.refresh(user)
+
+    user.clean_password = password
+
     return user
 
 
@@ -151,3 +158,27 @@ def mock_db_time():
         _mock_db_time: O gerenciador de contexto que simula o tempo.
     """
     return _mock_db_time
+
+
+@pytest.fixture
+def token(client, user):
+    """
+    Gera um token JWT de autenticação para o usuário de teste.
+
+    Esta fixture faz uma requisição POST para a rota /token usando
+    as credenciais do usuário de teste e retorna o token de acesso
+    gerado.
+
+    Args:
+        client (TestClient): Cliente de teste.
+        user (User): Usuário de teste criado pela fixture user.
+
+    Returns:
+        str: Token JWT de acesso para autenticação.
+    """
+    response = client.post(
+        '/token',
+        data={'username': user.email, 'password': user.clean_password},
+    )
+
+    return response.json()['access_token']

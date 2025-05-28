@@ -1,6 +1,7 @@
 from http import HTTPStatus
 
 from fastapi_zero.schemas import UserPublic
+from fastapi_zero.security import create_access_token
 
 
 def test_root_deve_retornar_hello_world(client):
@@ -99,18 +100,7 @@ def test_create_user_deve_retornar_erro_409_quando_email_ja_existe(
     assert response.json() == {'detail': 'Email already exists'}
 
 
-def test_read_users_deve_retornar_lista_de_usuarios_vazia(client):
-    """
-    Testa se o endpoint /users/ retorna uma lista de usuários.
-
-    Verifica se a resposta da API contém o status code 200 (OK).
-    """
-    response = client.get('/users/')
-    assert response.status_code == HTTPStatus.OK
-    assert response.json() == {'users': []}
-
-
-def test_read_users_deve_retornar_lista_de_usuarios_com_usuarios(client, user):
+def test_read_users_deve_retornar_lista_de_usuarios(client, user, token):
     """
     Testa se o endpoint /users/ retorna uma lista de usuários.
     Utiliza a fixture 'user' para criar um usuário no banco de dados.
@@ -119,21 +109,25 @@ def test_read_users_deve_retornar_lista_de_usuarios_com_usuarios(client, user):
     se o corpo da resposta contém os dados do usuário criado.
     """
     user_schema = UserPublic.model_validate(user).model_dump()
-    response = client.get('/users/')
+    response = client.get(
+        '/users/', headers={'Authorization': f'Bearer {token}'}
+    )
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {'users': [user_schema]}
 
 
-def test_update_user_deve_retornar_usuario_atualizado(client, user):
+def test_update_user_deve_retornar_usuario_atualizado(client, user, token):
     """
-    Testa se o endpoint /users/{user_id} atualiza os dados de um usuário.
-    Utiliza a fixture 'user' para criar um usuário no banco de dados.
+    Testa se o endpoint /users/{user_id} atualiza os dados de um usuário
+    e retorna os dados atualizados.
 
     Verifica se a resposta da API contém o status code 200 (OK) e
-    se o corpo da resposta contém os dados do usuário atualizado.
+    se o corpo da resposta contém os dados do usuário atualizados,
+    incluindo o novo nome de usuário e email.
     """
     response = client.put(
-        '/users/1',
+        f'/users/{user.id}',
+        headers={'Authorization': f'Bearer {token}'},
         json={
             'username': 'updateduser',
             'email': 'update@update.com',
@@ -148,29 +142,8 @@ def test_update_user_deve_retornar_usuario_atualizado(client, user):
     }
 
 
-def test_update_user_deve_retornar_erro_404_quando_usuario_nao_existe(client):
-    """
-    Testa se o endpoint /users/{user_id} retorna erro 404 quando
-    o usuário não existe.
-
-    Verifica se a resposta da API contém o status code 404 (Not Found)
-    e se o corpo da resposta contém uma mensagem de erro indicando que
-    o usuário não foi encontrado.
-    """
-    response = client.put(
-        '/users/999',
-        json={
-            'username': 'updateduser',
-            'email': 'update@user.com',
-            'password': 'updatepassword',
-        },
-    )
-    assert response.status_code == HTTPStatus.NOT_FOUND
-    assert response.json() == {'detail': 'User not found'}
-
-
 def test_update_user_deve_retornar_erro_409_quando_usuario_ja_existe(
-    client, user
+    client, user, token
 ):
     """
     Testa se o endpoint /users/{user_id} retorna erro 409 quando
@@ -189,7 +162,8 @@ def test_update_user_deve_retornar_erro_409_quando_usuario_ja_existe(
         },
     )
     response = client.put(
-        '/users/1',
+        f'/users/{user.id}',
+        headers={'Authorization': f'Bearer {token}'},
         json={
             'username': 'sama',
             'email': 'sama@sama.com',
@@ -202,32 +176,66 @@ def test_update_user_deve_retornar_erro_409_quando_usuario_ja_existe(
     }
 
 
-def test_delete_user_deve_retornar_mensagem_de_usuario_deletado(client, user):
+def test_update_user_deve_retornar_erro_403_id_de_outro_usuario(
+    client, user, token
+):
     """
-    Testa se o endpoint /users/{user_id} deleta um usuário.
-    Utiliza a fixture 'user' para criar um usuário no banco de dados.
+    Testa se o endpoint /users/{user_id} retorna erro 403 quando
+    um usuário tenta atualizar os dados de outro usuário.
+
+    Verifica se a resposta da API contém o status code 403 (Forbidden)
+    e se o corpo da resposta contém uma mensagem de erro indicando que
+    o usuário não tem permissões suficientes.
+    """
+    response = client.put(
+        '/users/2',
+        headers={'Authorization': f'Bearer {token}'},
+        json={
+            'username': 'sama',
+            'email': 'sama@sama.com',
+            'password': 'sama',
+        },
+    )
+    assert response.status_code == HTTPStatus.FORBIDDEN
+    assert response.json() == {'detail': 'Not enough permissions'}
+
+
+def test_delete_user_deve_retornar_mensagem_de_usuario_deletado(
+    client, user, token
+):
+    """
+    Testa se o endpoint /users/{user_id} retorna uma mensagem de sucesso
+    quando um usuário é deletado.
 
     Verifica se a resposta da API contém o status code 200 (OK) e
-    se o corpo da resposta contém uma mensagem de sucesso indicando
-    que o usuário foi deletado.
+    se o corpo da resposta contém uma mensagem indicando que o
+    usuário foi deletado com sucesso.
     """
-    response = client.delete('/users/1')
+    response = client.delete(
+        f'/users/{user.id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {'message': 'User deleted'}
 
 
-def test_delete_user_deve_retornar_erro_404_quando_usuario_nao_existe(client):
+def test_delete_user_deve_retornar_erro_403_id_de_outro_usuario(
+    client, user, token
+):
     """
-    Testa se o endpoint /users/{user_id} retorna erro 404 quando
-    o usuário não existe.
+    Testa se o endpoint /users/{user_id} retorna erro 403 quando
+    um usuário tenta deletar outro usuário.
 
-    Verifica se a resposta da API contém o status code 404 (Not Found)
+    Verifica se a resposta da API contém o status code 403 (Forbidden)
     e se o corpo da resposta contém uma mensagem de erro indicando que
-    o usuário não foi encontrado.
+    o usuário não tem permissões suficientes.
     """
-    response = client.delete('/users/999')
-    assert response.status_code == HTTPStatus.NOT_FOUND
-    assert response.json() == {'detail': 'User not found'}
+    response = client.delete(
+        '/users/2',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert response.status_code == HTTPStatus.FORBIDDEN
+    assert response.json() == {'detail': 'Not enough permissions'}
 
 
 def test_get_user_deve_retornar_usuario(client, user):
@@ -259,3 +267,92 @@ def test_get_user_deve_retornar_erro_404_quando_usuario_nao_existe(client):
     response = client.get('/users/999')
     assert response.status_code == HTTPStatus.NOT_FOUND
     assert response.json() == {'detail': 'User not found'}
+
+
+def test_get_token_deve_retornar_token_de_acesso(client, user):
+    """
+    Testa se o endpoint /token retorna um token de acesso JWT.
+
+    Verifica se a resposta da API contém o status code 200 (OK) e
+    se o corpo da resposta contém o token de acesso JWT.
+    """
+    response = client.post(
+        '/token',
+        data={
+            'username': user.email,
+            'password': user.clean_password,
+        },
+    )
+    assert response.status_code == HTTPStatus.OK
+    assert 'access_token' in response.json()
+    assert response.json()['token_type'] == 'Bearer'
+
+
+def test_get_current_user_without_email(client):
+    """
+    Testa se a autenticação falha quando o token não contém o email do usuário.
+
+    Verifica se a resposta da API contém o status code 401 (Unauthorized) e
+    se o corpo da resposta contém uma mensagem de erro indicando que as
+    credenciais não puderam ser validadas.
+    """
+    data = {'no-email': 'test'}
+    token = create_access_token(data)
+
+    response = client.delete(
+        '/users/1',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
+    assert response.json() == {'detail': 'Could not validate credentials'}
+
+
+def test_get_current_user_does_not_exists(client):
+    """
+    Testa se a autenticação falha quando o usuário do token não existe.
+
+    Verifica se a resposta da API contém o status code 401 (Unauthorized) e
+    se o corpo da resposta contém uma mensagem de erro indicando que as
+    credenciais não puderam ser validadas.
+    """
+    data = {'sub': 'test@test'}
+    token = create_access_token(data)
+    response = client.delete(
+        '/users/1',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
+    assert response.json() == {'detail': 'Could not validate credentials'}
+
+
+def test_login_with_wrong_password(client, user):
+    """
+    Testa se o login falha quando a senha está incorreta.
+
+    Verifica se a resposta da API contém o status code 401 (Unauthorized) e
+    se o corpo da resposta contém uma mensagem de erro indicando que o
+    email ou senha estão incorretos.
+    """
+    response = client.post(
+        '/token',
+        data={'username': user.email, 'password': 'XXXXX_password'},
+    )
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
+    assert response.json() == {'detail': 'Incorrect email or password'}
+
+
+def test_login_with_wrong_username(client, user):
+    """
+    Testa se o login falha quando o nome de usuário está incorreto.
+
+    Verifica se a resposta da API contém o status code 401 (Unauthorized) e
+    se o corpo da resposta contém uma mensagem de erro indicando que o
+    email ou senha estão incorretos.
+    """
+    response = client.post(
+        '/token',
+        data={'username': 'XXXXXXXXXXX', 'password': user.clean_password},
+    )
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
+    assert response.json() == {'detail': 'Incorrect email or password'}
