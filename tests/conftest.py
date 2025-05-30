@@ -11,6 +11,7 @@ from fastapi_zero.app import app
 from fastapi_zero.database import get_session
 from fastapi_zero.models import User, table_registry
 from fastapi_zero.security import get_password_hash
+from fastapi_zero.settings import Settings
 
 
 @pytest.fixture
@@ -177,8 +178,13 @@ def token(client, user):
         str: Token JWT de acesso para autenticação.
     """
     response = client.post(
-        '/token',
+        '/auth/token',
         data={'username': user.email, 'password': user.clean_password},
     )
 
     return response.json()['access_token']
+
+
+@pytest.fixture
+def settings():
+    return Settings()
