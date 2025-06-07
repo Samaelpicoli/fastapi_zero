@@ -2,9 +2,10 @@ from contextlib import contextmanager
 from datetime import datetime
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import Session
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from fastapi_zero.app import app
@@ -51,34 +52,46 @@ def client(session):
     app.dependency_overrides.clear()
 
 
-@pytest.fixture
-def session():
+@pytest_asyncio.fixture
+async def session():
     """
     Cria uma sessão de banco de dados em memória para testes.
 
     Esta função cria um banco de dados SQLite em memória e inicializa
     as tabelas definidas no modelo. A sessão é usada para interagir com
     o banco de dados durante os testes. Após os testes, a sessão é
-    descartada e o banco de dados é limpo.
+    descartada e o banco de dados é limpo. A função utiliza
+    `pytest_asyncio` para garantir que a sessão seja criada e
+    destruída corretamente em um contexto assíncrono. Utiliza também
+    gerenciadores de contexto juntamente com `AsyncSession` do SQLAlchemy para
+    garantir que a sessão seja fechada corretamente após o uso.
+    O assincronismo permite que as operações de banco de dados
+    sejam executadas de forma eficiente, sem bloquear o loop de eventos.
 
     Yields:
         Session: Uma sessão de banco de dados configurada para os testes.
     """
-    engine = create_engine(
-        'sqlite:///:memory:',
+    engine = create_async_engine(
+        'sqlite+aiosqlite:///:memory:',
         connect_args={'check_same_thread': False},
         poolclass=StaticPool,
     )
-    table_registry.metadata.create_all(engine)
 
-    with Session(engine) as session:
+    async with engine.begin() as conn:
+        # Cria todas as tabelas definidas no modelo
+        await conn.run_sync(table_registry.metadata.create_all)
+
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        # Limpa o banco de dados antes de cada teste
         yield session
 
-    table_registry.metadata.drop_all(engine)
+    async with engine.begin() as conn:
+        # Destrói todas as tabelas após os testes
+        await conn.run_sync(table_registry.metadata.drop_all)
 
 
-@pytest.fixture
-def user(session: Session):
+@pytest_asyncio.fixture
+async def user(session):
     """
     Cria um usuário de teste no banco de dados.
     Esta função cria um usuário com nome de usuário, email e senha
@@ -99,8 +112,8 @@ def user(session: Session):
         password=get_password_hash(password),
     )
     session.add(user)
-    session.commit()
-    session.refresh(user)
+    await session.commit()
+    await session.refresh(user)
 
     user.clean_password = password
 

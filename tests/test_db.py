@@ -1,11 +1,14 @@
 from dataclasses import asdict
 
+import pytest
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi_zero.models import User
 
 
-def test_create_user(session, mock_db_time):
+@pytest.mark.asyncio
+async def test_create_user(session: AsyncSession, mock_db_time):
     """
     Testa a criação de um usuário no banco de dados.
     Verifica se o usuário é criado corretamente com os dados fornecidos
@@ -18,9 +21,11 @@ def test_create_user(session, mock_db_time):
             password='testpassword',
         )
         session.add(new_user)
-        session.commit()
+        await session.commit()
 
-        user = session.scalar(select(User).where(User.username == 'testuser'))
+        user = await session.scalar(
+            select(User).where(User.username == 'testuser')
+        )
 
     assert asdict(user) == {
         'id': 1,

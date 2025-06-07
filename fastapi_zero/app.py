@@ -13,7 +13,7 @@ app.include_router(users.router)
 
 
 @app.get('/', status_code=HTTPStatus.OK, response_model=Message)
-def read_root():
+async def read_root():
     """
     Retorna uma mensagem de boas-vindas.
     Esta função manipula requisições GET para a rota raiz ('/').
@@ -25,7 +25,7 @@ def read_root():
 
 
 @app.get('/hello', status_code=HTTPStatus.OK, response_class=HTMLResponse)
-def hello_world():
+async def hello_world():
     """
     Retorna uma mensagem de boas-vindas em formato HTML.
     Esta função manipula requisições GET para a rota '/hello'.
