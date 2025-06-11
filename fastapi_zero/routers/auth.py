@@ -9,12 +9,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi_zero.database import get_session
 from fastapi_zero.models import User
 from fastapi_zero.schemas import Token
-from fastapi_zero.security import create_access_token, verify_password
+from fastapi_zero.security import (
+    create_access_token,
+    get_current_user,
+    verify_password,
+)
 
 router = APIRouter(prefix='/auth', tags=['auth'])
 
 T_Session = Annotated[AsyncSession, Depends(get_session)]
 OAuth2Form = Annotated[OAuth2PasswordRequestForm, Depends()]
+CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 @router.post('/token', response_model=Token)
@@ -54,6 +59,24 @@ async def login_for_access_token(
             detail='Incorrect email or password',
         )
 
+    access_token = create_access_token({'sub': user.email})
+
+    return {'access_token': access_token, 'token_type': 'Bearer'}
+
+
+@router.post('/refresh/token', response_model=Token)
+async def refresh_access_token(user: CurrentUser):
+    """
+    Atualiza o token de acesso do usuário autenticado.
+    Esta função manipula requisições POST para a rota '/refresh/token'.
+    Retorna um novo token de acesso para o usuário autenticado.
+
+    Args:
+        user (User): O usuário autenticado.
+
+    Returns:
+        Token: Um objeto Token contendo o novo token de acesso.
+    """
     access_token = create_access_token({'sub': user.email})
 
     return {'access_token': access_token, 'token_type': 'Bearer'}

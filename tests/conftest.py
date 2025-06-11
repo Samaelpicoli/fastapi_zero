@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from datetime import datetime
 
+import factory
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
@@ -106,11 +107,33 @@ async def user(session):
         User: O usuário criado no banco de dados.
     """
     password = 'testpassword'
-    user = User(
-        username='testuser',
-        email='test@test.com',
-        password=get_password_hash(password),
-    )
+    user = UserFactory(password=get_password_hash(password))
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+
+    user.clean_password = password
+
+    return user
+
+
+@pytest_asyncio.fixture
+async def other_user(session):
+    """
+    Cria um novo usuário de teste no banco de dados.
+    Esta função utiliza o UserFactory, para facilitar a criação dos dados.
+    O usuário é adicionado à sessão do banco de dados
+    e a sessão é confirmada. Após a confirmação, o usuário é
+    recuperado e retornado.
+
+    Args:
+        session (Session): A sessão de banco de dados para os testes.
+
+    Returns:
+        User: O usuário criado no banco de dados.
+    """
+    password = 'testpassword'
+    user = UserFactory(password=get_password_hash(password))
     session.add(user)
     await session.commit()
     await session.refresh(user)
@@ -201,3 +224,40 @@ def token(client, user):
 @pytest.fixture
 def settings():
     return Settings()
+
+
+class UserFactory(factory.Factory):
+    """
+    Fábrica para criar instâncias de User para testes.
+    Esta fábrica utiliza a biblioteca `factory_boy` para gerar
+    instâncias de User com dados aleatórios. Os campos
+    'username', 'email' e 'password' são preenchidos com valores
+    gerados aleatoriamente.
+
+    Attributes:
+        username (factory.Sequence): Gera um nome de usuário único, o sequence,
+        é incrementado a cada chamada, garantindo que cada usuário tenha
+        um nome de usuário exclusivo.
+
+        email (factory.LazyAttribute): Gera um email baseado no nome de
+        usuáro, o lazy significa que o email é gerado após atributos que
+        não são fixos serem definidos, garantindo que o email
+        seja sempre único e relacionado ao nome de usuário.
+
+        password (factory.LazyAttribute): Gera uma senha baseada no nome
+        de usuário, garantindo que a senha seja sempre única e relacionada
+        ao nome de usuário. A senha é gerada após os atributos que não são
+        fixos serem definidos, garantindo que a senha seja sempre
+        consistente com o nome de usuário.
+    """
+
+    class Meta:
+        """
+        Meta class para definir o modelo associado à fábrica.
+        """
+
+        model = User
+
+    username = factory.Sequence(lambda n: f'test{n}')
+    email = factory.LazyAttribute(lambda obj: f'{obj.username}@test.com')
+    password = factory.LazyAttribute(lambda obj: f'{obj.username}@example.com')

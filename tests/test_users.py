@@ -41,7 +41,7 @@ def test_create_user_deve_retornar_erro_409_quando_usuario_ja_existe(
     response = client.post(
         '/users/',
         json={
-            'username': 'testuser',
+            'username': user.username,
             'email': 'test@test.com',
             'password': 'testpassword',
         },
@@ -65,7 +65,7 @@ def test_create_user_deve_retornar_erro_409_quando_email_ja_existe(
         '/users/',
         json={
             'username': 'sama',
-            'email': 'test@test.com',
+            'email': user.email,
             'password': 'testpassword',
         },
     )
@@ -116,7 +116,7 @@ def test_update_user_deve_retornar_usuario_atualizado(client, user, token):
 
 
 def test_update_user_deve_retornar_erro_409_quando_usuario_ja_existe(
-    client, user, token
+    client, user, other_user, token
 ):
     """
     Testa se o endpoint /users/{user_id} retorna erro 409 quando
@@ -126,19 +126,11 @@ def test_update_user_deve_retornar_erro_409_quando_usuario_ja_existe(
     e se o corpo da resposta contém uma mensagem de erro indicando que
     o nome de usuário ou e-mail já existem.
     """
-    client.post(
-        '/users/',
-        json={
-            'username': 'sama',
-            'email': 'sama@sama.com',
-            'password': 'sama',
-        },
-    )
     response = client.put(
         f'/users/{user.id}',
         headers={'Authorization': f'Bearer {token}'},
         json={
-            'username': 'sama',
+            'username': other_user.username,
             'email': 'sama@sama.com',
             'password': 'sama',
         },
@@ -150,7 +142,7 @@ def test_update_user_deve_retornar_erro_409_quando_usuario_ja_existe(
 
 
 def test_update_user_deve_retornar_erro_403_id_de_outro_usuario(
-    client, user, token
+    client, other_user, token
 ):
     """
     Testa se o endpoint /users/{user_id} retorna erro 403 quando
@@ -161,7 +153,7 @@ def test_update_user_deve_retornar_erro_403_id_de_outro_usuario(
     o usuário não tem permissões suficientes.
     """
     response = client.put(
-        '/users/2',
+        f'/users/{other_user.id}',
         headers={'Authorization': f'Bearer {token}'},
         json={
             'username': 'sama',
@@ -193,7 +185,7 @@ def test_delete_user_deve_retornar_mensagem_de_usuario_deletado(
 
 
 def test_delete_user_deve_retornar_erro_403_id_de_outro_usuario(
-    client, user, token
+    client, other_user, token
 ):
     """
     Testa se o endpoint /users/{user_id} retorna erro 403 quando
@@ -204,7 +196,7 @@ def test_delete_user_deve_retornar_erro_403_id_de_outro_usuario(
     o usuário não tem permissões suficientes.
     """
     response = client.delete(
-        '/users/2',
+        f'/users/{other_user.id}',
         headers={'Authorization': f'Bearer {token}'},
     )
     assert response.status_code == HTTPStatus.FORBIDDEN
@@ -223,8 +215,8 @@ def test_get_user_deve_retornar_usuario(client, user):
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {
         'id': 1,
-        'username': 'testuser',
-        'email': 'test@test.com',
+        'username': user.username,
+        'email': user.email,
     }
 
 

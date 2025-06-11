@@ -5,7 +5,7 @@ from fastapi_zero.settings import Settings
 engine = create_async_engine(Settings().DATABASE_URL)
 
 
-async def get_session():
+async def get_session():  # pragma: no cover
     """
     Cria uma sessão de banco de dados.
     Esta função cria uma sessão de banco de dados usando o SQLAlchemy.
