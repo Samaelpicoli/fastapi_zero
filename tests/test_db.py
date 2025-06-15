@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fastapi_zero.models import User
+from fastapi_zero.models import Todo, User
 
 
 @pytest.mark.asyncio
@@ -34,4 +34,24 @@ async def test_create_user(session: AsyncSession, mock_db_time):
         'password': 'testpassword',
         'created_at': time,
         'updated_at': time,
+        'todos': [],
     }
+
+
+@pytest.mark.asyncio
+async def test_create_todo_com_state_invalido(session, user):
+    """
+    Testa a criação de um Todo com um estado inválido.
+    Verifica se uma exceção é levantada quando o estado do Todo
+    não corresponde a nenhum dos estados definidos na enumeração TodoState.
+    """
+    todo = Todo(
+        title='Invalid State Todo',
+        description='This todo has an invalid state',
+        state='invalid_state',
+        user_id=user.id,
+    )
+    session.add(todo)
+    await session.commit()
+    with pytest.raises(LookupError):
+        await session.scalar(select(Todo))
