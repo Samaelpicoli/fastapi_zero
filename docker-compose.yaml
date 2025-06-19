@@ -1,0 +1,23 @@
+services:
+  fastzero_database:
+    image: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    env_file:
+      - .env
+    ports:
+      - "5434:5432"
+
+  fastzero_app:
+    image: fastzero_app
+    entrypoint: ./entrypoint.sh
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      - fastzero_database
+    env_file:
+      - .env
+
+volumes:
+  pgdata:
