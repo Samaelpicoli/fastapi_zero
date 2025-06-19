@@ -20,6 +20,9 @@ jobs:
       
       - name: Instalar dependências
         run: poetry install
+
+      - name: Executar o linter
+        run: poetry run task format
       
       - name: Rodar os testes
         run: poetry run task test
